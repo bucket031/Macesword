@@ -1,0 +1,15 @@
+name: MaceSword
+version: '${project.version}'
+main: com.example.macesword.MaceSword
+api-version: '1.21'
+description: A sword that turns into a mace when you fall onto your target.
+commands:
+  macesword:
+    description: Give or enchant the Mace Sword
+    usage: /<command> <give|enchant|config|reload>
+    aliases: [msword]
+    permission: macesword.admin
+permissions:
+  macesword.admin:
+    description: Give the Mace Sword, add mace enchantments by command, open the config menu, reload the config
+    default: op
