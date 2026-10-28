@@ -1,0 +1,132 @@
+package com.example.macesword;
+import org.bukkit.Bukkit;
+import org.bukkit.entity.Item;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
+import org.bukkit.event.Listener;
+import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryOpenEvent;
+import org.bukkit.event.player.PlayerDropItemEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.scheduler.BukkitTask;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+/**
+ * Makes the sword LOOK like a mace while its holder is falling far enough.
+ * Only the item model changes; the item is still a sword.
+ * The mace look is always put back when the fall ends, the item is dropped, or the player leaves.
+ */
+public final class FormManager implements Listener {
+    private final MaceSword plugin;
+    /** player -> inventory slot holding the sword that is currently showing the mace model */
+    private final Map<UUID, Integer> maceSlots = new HashMap<>();
+    private BukkitTask task;
+    public FormManager(MaceSword plugin) {
+        this.plugin = plugin;
+    }
+    public void start() {
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            normalizeInventory(player);
+        }
+        task = Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 1L, 1L);
+    }
+    public void shutdown() {
+        if (task != null) task.cancel();
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            revert(player);
+            normalizeInventory(player);
+        }
+        maceSlots.clear();
+    }
+    // ----------------------------------------------------------------- tick
+    private void tick() {
+        if (!plugin.visualForm()) {
+            if (!maceSlots.isEmpty()) {
+                for (Player player : Bukkit.getOnlinePlayers()) revert(player);
+            }
+            return;
+        }
+        double threshold = plugin.activationDistance();
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            UUID id = player.getUniqueId();
+            int held = player.getInventory().getHeldItemSlot();
+            ItemStack hand = player.getInventory().getItemInMainHand();
+            boolean wantMace = !player.isDead()
+                    && !player.isGliding()
+                    && plugin.sword().isMaceSword(hand)
+                    && player.getFallDistance() >= threshold;
+            Integer current = maceSlots.get(id);
+            if (wantMace) {
+                if (current != null && current == held) continue; // already showing the mace
+                if (current != null) revert(player);              // switched to another sword mid-fall
+                plugin.sword().setForm(hand, true);
+                player.getInventory().setItemInMainHand(hand);
+                maceSlots.put(id, held);
+            } else if (current != null) {
+                revert(player);
+            }
+        }
+    }
+    /** Puts this player's sword back to its sword look. */
+    private void revert(Player player) {
+        Integer slot = maceSlots.remove(player.getUniqueId());
+        if (slot == null) return;
+        ItemStack stack = player.getInventory().getItem(slot);
+        if (plugin.sword().isMaceSword(stack) && plugin.sword().isMaceForm(stack)) {
+            plugin.sword().setForm(stack, false);
+            player.getInventory().setItem(slot, stack);
+        }
+    }
+    /** Safety net: puts every Mace Sword the player carries back to its sword look. */
+    private void normalizeInventory(Player player) {
+        ItemStack[] contents = player.getInventory().getContents();
+        for (int slot = 0; slot < contents.length; slot++) {
+            ItemStack stack = contents[slot];
+            if (plugin.sword().isMaceSword(stack) && plugin.sword().isMaceForm(stack)) {
+                plugin.sword().setForm(stack, false);
+                player.getInventory().setItem(slot, stack);
+            }
+        }
+    }
+    // --------------------------------------------------------------- events
+    @EventHandler
+    public void onJoin(PlayerJoinEvent event) {
+        normalizeInventory(event.getPlayer());
+    }
+    @EventHandler
+    public void onQuit(PlayerQuitEvent event) {
+        revert(event.getPlayer());
+        normalizeInventory(event.getPlayer());
+    }
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onDeath(PlayerDeathEvent event) {
+        revert(event.getEntity());
+        for (ItemStack drop : event.getDrops()) {
+            if (plugin.sword().isMaceSword(drop) && plugin.sword().isMaceForm(drop)) {
+                plugin.sword().setForm(drop, false);
+            }
+        }
+    }
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onDrop(PlayerDropItemEvent event) {
+        Item dropped = event.getItemDrop();
+        ItemStack stack = dropped.getItemStack().clone();
+        if (plugin.sword().isMaceSword(stack) && plugin.sword().isMaceForm(stack)) {
+            plugin.sword().setForm(stack, false);
+            dropped.setItemStack(stack);
+        }
+    }
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onInventoryClick(InventoryClickEvent event) {
+        if (event.getWhoClicked() instanceof Player player) revert(player);
+    }
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onInventoryOpen(InventoryOpenEvent event) {
+        if (event.getPlayer() instanceof Player player) revert(player);
+    }
+}
