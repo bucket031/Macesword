@@ -1,4 +1,4 @@
-ackage com.example.macesword;
+package com.example.macesword;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.TextColor;
 import net.kyori.adventure.text.format.TextDecoration;
